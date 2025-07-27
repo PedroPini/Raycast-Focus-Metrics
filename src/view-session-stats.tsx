@@ -14,6 +14,7 @@ import {
 	getSessionStats,
 	markSessionCompleted,
 	removeSession,
+	updateSessionStatuses,
 } from "./sessionStorage";
 import type { Session, SessionStats } from "./types";
 
@@ -63,6 +64,9 @@ export default function Command() {
 	const loadStats = async () => {
 		try {
 			setIsLoading(true);
+			// First update session statuses based on elapsed time
+			await updateSessionStatuses();
+			// Then load the updated stats
 			const sessionStats = await getSessionStats();
 			setStats(sessionStats);
 		} catch (error) {
@@ -198,7 +202,7 @@ export default function Command() {
 						<List.Item
 							key={session.id}
 							title={session.goal || "No goal set"}
-							subtitle={`${session.categories} • ${formatDate(session.startTime)}`}
+							subtitle={formatDate(session.startTime)}
 							icon={getStatusIcon(session.status).icon}
 							accessories={[
 								{

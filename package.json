@@ -18,6 +18,12 @@
       "title": "View Session Statistics",
       "description": "View and manage tracked sessions",
       "mode": "view"
+    },
+    {
+      "name": "manage-tags",
+      "title": "Manage Tags",
+      "description": "Create, edit, and delete tags for focus sessions",
+      "mode": "view"
     }
   ],
   "dependencies": {

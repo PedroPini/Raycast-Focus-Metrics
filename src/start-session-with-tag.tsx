@@ -8,8 +8,8 @@ import {
 	showToast,
 	Toast,
 } from "@raycast/api";
-import { useState } from "react";
-import { addSession } from "./sessionStorage";
+import { useEffect, useState } from "react";
+import { addSession, getAllTags } from "./sessionStorage";
 import type { Session, SessionArguments } from "./types";
 
 /**
@@ -69,36 +69,96 @@ export default function Command() {
 	const [goal, setGoal] = useState("");
 	const [duration, setDuration] = useState("1800"); // 30 minutes default
 	const [mode, setMode] = useState("block");
-	const [categories, setCategories] = useState("social,messaging,streaming");
+	const [selectedCategories, setSelectedCategories] = useState<string[]>([
+		"social",
+		"messaging",
+		"streaming",
+	]);
 	const [tag, setTag] = useState("");
+	const [availableTags, setAvailableTags] = useState<string[]>([]);
+	const [isLoadingTags, setIsLoadingTags] = useState(true);
+
+	// Load existing tags on component mount
+	useEffect(() => {
+		const loadTags = async () => {
+			try {
+				const tags = await getAllTags();
+				setAvailableTags(tags);
+			} catch (error) {
+				console.error("Error loading tags:", error);
+			} finally {
+				setIsLoadingTags(false);
+			}
+		};
+		loadTags();
+	}, []);
+
+	// Standard Focus categories that match Raycast's official Focus app
+	const focusCategories = [
+		{ id: "social", title: "Social", icon: Icon.Person },
+		{ id: "messaging", title: "Messaging", icon: Icon.Message },
+		{ id: "streaming", title: "Streaming", icon: Icon.Video },
+		{ id: "gaming", title: "Gaming", icon: Icon.GameController },
+		{ id: "news", title: "News", icon: Icon.Document },
+		{ id: "shopping", title: "Shopping", icon: Icon.Cart },
+		{ id: "entertainment", title: "Entertainment", icon: Icon.Video },
+		{ id: "work", title: "Work", icon: Icon.Document },
+		{ id: "productivity", title: "Productivity", icon: Icon.Checkmark },
+		{ id: "education", title: "Education", icon: Icon.Book },
+		{ id: "health", title: "Health", icon: Icon.Heart },
+		{ id: "finance", title: "Finance", icon: Icon.CreditCard },
+	];
+
+	const handleCategoryToggle = (categoryId: string) => {
+		setSelectedCategories((prev) =>
+			prev.includes(categoryId)
+				? prev.filter((id) => id !== categoryId)
+				: [...prev, categoryId],
+		);
+	};
 
 	const handleSubmit = async (values: {
 		goal: string;
 		duration: string;
 		mode: string;
-		categories: string;
 		tag: string;
 	}) => {
 		try {
+			const categoriesString = selectedCategories.join(",");
+			const finalTag = values.tag;
+
+			if (!finalTag.trim()) {
+				await showToast({
+					style: Toast.Style.Failure,
+					title: "Tag Required",
+					message: "Please enter a tag for tracking this session",
+				});
+				return;
+			}
+
 			// Create session record
 			const session = createSession({
 				goal: values.goal,
 				duration: values.duration,
 				mode: values.mode,
-				categories: values.categories,
-				tag: values.tag,
+				categories: categoriesString,
+				tag: finalTag,
 			});
 
 			// Store session in local storage
 			await addSession(session);
+
+			// Reload available tags to include the new one
+			const updatedTags = await getAllTags();
+			setAvailableTags(updatedTags);
 
 			// Build and trigger Focus deeplink
 			const deeplink = buildFocusDeeplink({
 				goal: values.goal,
 				duration: values.duration,
 				mode: values.mode,
-				categories: values.categories,
-				tag: values.tag,
+				categories: categoriesString,
+				tag: finalTag,
 			});
 			await open(deeplink);
 
@@ -106,7 +166,7 @@ export default function Command() {
 			await showToast({
 				style: Toast.Style.Success,
 				title: "Session Started",
-				message: `Tag: ${values.tag} | Duration: ${values.duration ? formatDuration(parseInt(values.duration, 10)) : "No limit"}`,
+				message: `Tag: ${finalTag} | Duration: ${values.duration ? formatDuration(parseInt(values.duration, 10)) : "No limit"}`,
 			});
 		} catch (error) {
 			console.error("Error starting session:", error);
@@ -168,23 +228,48 @@ export default function Command() {
 				/>
 			</Form.Dropdown>
 
-			<Form.TextField
-				id="categories"
-				title="Categories to Block"
-				placeholder="social,messaging,streaming"
-				value={categories}
-				onChange={setCategories}
-				info="Comma-separated list of categories to block during the session"
-			/>
+			{focusCategories.map((category) => (
+				<Form.Checkbox
+					key={category.id}
+					id={`category-${category.id}`}
+					title={category.title}
+					label={category.title}
+					value={selectedCategories.includes(category.id)}
+					onChange={(checked) => {
+						if (checked) {
+							setSelectedCategories((prev) => [...prev, category.id]);
+						} else {
+							setSelectedCategories((prev) =>
+								prev.filter((id) => id !== category.id),
+							);
+						}
+					}}
+				/>
+			))}
 
-			<Form.TextField
+			<Form.Dropdown
 				id="tag"
 				title="Tag"
-				placeholder="Enter a tag for tracking this session"
 				value={tag}
 				onChange={setTag}
-				info="This tag will be used to group and track your sessions"
-			/>
+				placeholder="Enter a tag for tracking this session"
+				info="Type to create a new tag or select from existing ones"
+			>
+				{availableTags.map((tagOption) => (
+					<Form.Dropdown.Item
+						key={tagOption}
+						value={tagOption}
+						title={tagOption}
+					/>
+				))}
+				{tag && !availableTags.includes(tag) && (
+					<Form.Dropdown.Item
+						value={tag}
+						title={`Create "${tag}"`}
+						icon={Icon.Plus}
+					/>
+				)}
+			</Form.Dropdown>
 		</Form>
 	);
 }
