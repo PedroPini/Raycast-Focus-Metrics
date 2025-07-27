@@ -24,6 +24,13 @@
       "title": "Manage Tags",
       "description": "Create, edit, and delete tags for focus sessions",
       "mode": "view"
+    },
+    {
+      "name": "focus-status",
+      "title": "Focus Status",
+      "description": "Show current focus session status in menu bar",
+      "mode": "menu-bar",
+      "interval": "1m"
     }
   ],
   "dependencies": {

@@ -12,6 +12,7 @@ import {
 import { useEffect, useState } from "react";
 import {
 	getSessionStats,
+	loadSessions,
 	markSessionCompleted,
 	removeSession,
 	updateSessionStatuses,
@@ -88,7 +89,8 @@ export default function Command() {
 			await loadStats(); // Reload stats
 			await showToast({
 				style: Toast.Style.Success,
-				title: "Session Marked as Completed",
+				title: "Session Completed",
+				message: "Session has been marked as completed",
 			});
 		} catch (error) {
 			console.error("Error marking session completed:", error);
@@ -119,6 +121,7 @@ export default function Command() {
 				await showToast({
 					style: Toast.Style.Success,
 					title: "Session Removed",
+					message: "Session has been successfully removed",
 				});
 			} catch (error) {
 				console.error("Error removing session:", error);
@@ -135,7 +138,7 @@ export default function Command() {
 	const handleRemoveAllSessions = async (tag: string) => {
 		const confirmed = await confirmAlert({
 			title: "Remove All Sessions",
-			message: `Are you sure you want to remove all sessions with tag "${tag}"? This action cannot be undone.`,
+			message: `Are you sure you want to remove all sessions for "${tag}"? This action cannot be undone.`,
 			primaryAction: {
 				title: "Remove All",
 				style: Alert.ActionStyle.Destructive,
@@ -144,18 +147,19 @@ export default function Command() {
 
 		if (confirmed) {
 			try {
-				const tagStats = stats.find((s) => s.tag === tag);
-				if (tagStats) {
-					for (const session of tagStats.sessions) {
-						await removeSession(session.id);
-					}
-					await loadStats(); // Reload stats
-					await showToast({
-						style: Toast.Style.Success,
-						title: "All Sessions Removed",
-						message: `Removed ${tagStats.sessions.length} sessions`,
-					});
+				const sessions = await loadSessions();
+				const sessionsToRemove = sessions.filter((s: Session) => s.tag === tag);
+
+				for (const session of sessionsToRemove) {
+					await removeSession(session.id);
 				}
+
+				await loadStats(); // Reload stats
+				await showToast({
+					style: Toast.Style.Success,
+					title: "Sessions Removed",
+					message: `All ${sessionsToRemove.length} sessions for "${tag}" have been removed`,
+				});
 			} catch (error) {
 				console.error("Error removing sessions:", error);
 				await showToast({

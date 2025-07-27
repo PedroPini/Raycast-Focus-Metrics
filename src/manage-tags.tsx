@@ -108,7 +108,7 @@ export default function Command() {
 			await showToast({
 				style: Toast.Style.Success,
 				title: "Tag Created",
-				message: `Tag "${tagName}" has been created`,
+				message: `Tag "${tagName}" has been created and is now available for sessions`,
 			});
 		} catch (error) {
 			console.error("Error creating tag:", error);

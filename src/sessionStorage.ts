@@ -13,12 +13,18 @@ export const isFocusRunning = async (): Promise<boolean> => {
 		const focusApp = applications.find(
 			(app) =>
 				app.name.toLowerCase().includes("focus") ||
-				app.bundleId?.toLowerCase().includes("focus"),
+				app.bundleId?.toLowerCase().includes("focus") ||
+				app.bundleId?.toLowerCase().includes("raycast"),
 		);
 
-		// If Focus app is found, assume it might be running
-		// Note: Raycast API doesn't provide direct running status
-		return !!focusApp;
+		// Check if Raycast is running (which includes Focus functionality)
+		const raycastApp = applications.find(
+			(app) =>
+				app.bundleId?.toLowerCase().includes("raycast") ||
+				app.name.toLowerCase().includes("raycast"),
+		);
+
+		return !!(focusApp || raycastApp);
 	} catch (error) {
 		console.error("Error checking Focus app status:", error);
 		return false;
@@ -26,12 +32,13 @@ export const isFocusRunning = async (): Promise<boolean> => {
 };
 
 /**
- * Update session status based on time elapsed
+ * Update session status based on time elapsed and Focus app state
  */
 export const updateSessionStatuses = async (): Promise<void> => {
 	try {
 		const sessions = await loadSessions();
 		const now = Date.now();
+		const isFocusActive = await isFocusRunning();
 
 		const updatedSessions = sessions.map((session) => {
 			// If session has a duration and has been running longer than the duration, mark as completed
@@ -47,12 +54,28 @@ export const updateSessionStatuses = async (): Promise<void> => {
 					};
 				}
 			}
+
+			// If Focus is not running and session was running for more than 5 minutes, mark as completed
+			if (session.status === "running" && !isFocusActive) {
+				const elapsedTime = now - session.startTime;
+				const fiveMinutesMs = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+				if (elapsedTime >= fiveMinutesMs) {
+					return {
+						...session,
+						status: "completed" as const,
+						endTime: now,
+					};
+				}
+			}
+
 			return session;
 		});
 
 		await saveSessions(updatedSessions);
 	} catch (error) {
 		console.error("Error updating session statuses:", error);
+		throw new Error("Failed to update session statuses");
 	}
 };
 
@@ -80,7 +103,7 @@ export const saveSessions = async (sessions: Session[]): Promise<void> => {
 		await LocalStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
 	} catch (error) {
 		console.error("Error saving sessions:", error);
-		throw error;
+		throw new Error("Failed to save sessions to storage");
 	}
 };
 
@@ -186,7 +209,7 @@ export const saveTags = async (tags: string[]): Promise<void> => {
 		await LocalStorage.setItem(TAGS_KEY, JSON.stringify(tags));
 	} catch (error) {
 		console.error("Error saving tags:", error);
-		throw error;
+		throw new Error("Failed to save tags to storage");
 	}
 };
 
