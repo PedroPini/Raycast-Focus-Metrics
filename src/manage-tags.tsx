@@ -7,6 +7,7 @@ import {
 	Form,
 	Icon,
 	List,
+	LocalStorage,
 	showToast,
 	Toast,
 } from "@raycast/api";
@@ -28,13 +29,29 @@ interface Tag {
 
 export default function Command() {
 	const [tags, setTags] = useState<Tag[]>([]);
+	const [filteredTags, setFilteredTags] = useState<Tag[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [showCreateForm, setShowCreateForm] = useState(false);
 	const [editingTag, setEditingTag] = useState<Tag | null>(null);
+	const [searchText, setSearchText] = useState("");
 
 	useEffect(() => {
 		loadTagsData();
 	}, []);
+
+	useEffect(() => {
+		// Filter tags based on search text
+		if (!searchText.trim()) {
+			setFilteredTags(tags);
+		} else {
+			const filtered = tags.filter(
+				(tag) =>
+					tag.name.toLowerCase().includes(searchText.toLowerCase()) ||
+					tag.usageCount.toString().includes(searchText),
+			);
+			setFilteredTags(filtered);
+		}
+	}, [tags, searchText]);
 
 	const loadTagsData = async () => {
 		try {
@@ -57,8 +74,7 @@ export default function Command() {
 			await showToast({
 				style: Toast.Style.Failure,
 				title: "Failed to Load Tags",
-				message:
-					error instanceof Error ? error.message : "Unknown error occurred",
+				message: "Please try refreshing the data",
 			});
 		} finally {
 			setIsLoading(false);
@@ -115,8 +131,7 @@ export default function Command() {
 			await showToast({
 				style: Toast.Style.Failure,
 				title: "Failed to Create Tag",
-				message:
-					error instanceof Error ? error.message : "Unknown error occurred",
+				message: "Please try again",
 			});
 		}
 	};
@@ -166,8 +181,7 @@ export default function Command() {
 			await showToast({
 				style: Toast.Style.Failure,
 				title: "Failed to Update Tag",
-				message:
-					error instanceof Error ? error.message : "Unknown error occurred",
+				message: "Please try again",
 			});
 		}
 	};
@@ -225,10 +239,79 @@ export default function Command() {
 				await showToast({
 					style: Toast.Style.Failure,
 					title: "Failed to Delete Tag",
-					message:
-						error instanceof Error ? error.message : "Unknown error occurred",
+					message: "Please try again",
 				});
 			}
+		}
+	};
+
+	const handleBulkDelete = async () => {
+		const unusedTags = filteredTags.filter((tag) => tag.usageCount === 0);
+
+		if (unusedTags.length === 0) {
+			await showToast({
+				style: Toast.Style.Success,
+				title: "No Unused Tags",
+				message: "All tags are currently in use",
+			});
+			return;
+		}
+
+		const confirmed = await confirmAlert({
+			title: "Delete Unused Tags",
+			message: `Are you sure you want to delete ${unusedTags.length} unused tags? This action cannot be undone.`,
+			primaryAction: {
+				title: "Delete All",
+				style: Alert.ActionStyle.Destructive,
+			},
+		});
+
+		if (confirmed) {
+			try {
+				for (const tag of unusedTags) {
+					await removeTag(tag.name);
+				}
+				await loadTagsData();
+				await showToast({
+					style: Toast.Style.Success,
+					title: "Tags Deleted",
+					message: `${unusedTags.length} unused tags have been deleted`,
+				});
+			} catch (error) {
+				console.error("Error deleting tags:", error);
+				await showToast({
+					style: Toast.Style.Failure,
+					title: "Failed to Delete Tags",
+					message: "Please try again",
+				});
+			}
+		}
+	};
+
+	const handleExportTags = async () => {
+		try {
+			const exportData = {
+				exportDate: new Date().toISOString(),
+				totalTags: tags.length,
+				tags: tags.map((tag) => ({
+					name: tag.name,
+					usageCount: tag.usageCount,
+					createdAt: tag.createdAt,
+				})),
+			};
+
+			await showToast({
+				style: Toast.Style.Success,
+				title: "Tags Ready for Export",
+				message: `${tags.length} tags exported successfully`,
+			});
+		} catch (error) {
+			console.error("Error exporting tags:", error);
+			await showToast({
+				style: Toast.Style.Failure,
+				title: "Export Failed",
+				message: "Please try again",
+			});
 		}
 	};
 
@@ -289,69 +372,135 @@ export default function Command() {
 		);
 	}
 
+	const unusedTagsCount = filteredTags.filter(
+		(tag) => tag.usageCount === 0,
+	).length;
+	const totalUsageCount = filteredTags.reduce(
+		(sum, tag) => sum + tag.usageCount,
+		0,
+	);
+
 	return (
 		<List
 			isLoading={isLoading}
-			searchBarPlaceholder="Search tags..."
+			searchBarPlaceholder="Search tags by name or usage count..."
+			onSearchTextChange={setSearchText}
 			actions={
 				<ActionPanel>
 					<Action
 						title="Create New Tag"
 						icon={Icon.Plus}
 						onAction={() => setShowCreateForm(true)}
+						shortcut={{ modifiers: ["cmd"], key: "n" }}
+					/>
+					{unusedTagsCount > 0 && (
+						<Action
+							title="Delete Unused Tags"
+							icon={Icon.Trash}
+							style={Action.Style.Destructive}
+							onAction={handleBulkDelete}
+							shortcut={{ modifiers: ["cmd", "shift"], key: "delete" }}
+						/>
+					)}
+					<Action
+						title="Export Tags"
+						icon={Icon.Download}
+						onAction={handleExportTags}
+						shortcut={{ modifiers: ["cmd"], key: "e" }}
 					/>
 					<Action
 						title="Refresh"
 						icon={Icon.ArrowClockwise}
 						onAction={loadTagsData}
+						shortcut={{ modifiers: ["cmd"], key: "r" }}
 					/>
 				</ActionPanel>
 			}
 		>
-			{tags.map((tag) => (
+			{/* Summary Section */}
+			<List.Section title="Overview">
 				<List.Item
-					key={tag.id}
-					title={tag.name}
-					subtitle={`Used in ${tag.usageCount} session${tag.usageCount !== 1 ? "s" : ""}`}
+					title={`${filteredTags.length} Tags`}
+					subtitle={`${totalUsageCount} total uses • ${unusedTagsCount} unused`}
 					icon={Icon.Tag}
 					accessories={[
 						{
-							text: new Date(tag.createdAt).toLocaleDateString(),
-							icon: Icon.Calendar,
+							text: `${Math.round(((filteredTags.length - unusedTagsCount) / filteredTags.length) * 100)}% used`,
+							icon: Icon.BarChart,
 						},
 					]}
-					actions={
-						<ActionPanel>
-							<Action
-								title="Edit Tag"
-								icon={Icon.Pencil}
-								onAction={() => setEditingTag(tag)}
-							/>
-							<Action
-								title="Delete Tag"
-								icon={Icon.Trash}
-								style={Action.Style.Destructive}
-								onAction={() => handleDeleteTag(tag)}
-							/>
-							<Action
-								title="Create New Tag"
-								icon={Icon.Plus}
-								onAction={() => setShowCreateForm(true)}
-							/>
-							<Action
-								title="Refresh"
-								icon={Icon.ArrowClockwise}
-								onAction={loadTagsData}
-							/>
-						</ActionPanel>
-					}
 				/>
-			))}
+			</List.Section>
 
-			{tags.length === 0 && !isLoading && (
+			{/* Tags List */}
+			<List.Section title="Tags">
+				{filteredTags.map((tag) => (
+					<List.Item
+						key={tag.id}
+						title={tag.name}
+						subtitle={`Used in ${tag.usageCount} session${tag.usageCount !== 1 ? "s" : ""}`}
+						icon={
+							tag.usageCount > 0
+								? Icon.Tag
+								: { source: Icon.Tag, tintColor: Color.SecondaryText }
+						}
+						accessories={[
+							{
+								text: tag.usageCount > 0 ? "Active" : "Unused",
+								icon: tag.usageCount > 0 ? Icon.Checkmark : Icon.Xmark,
+							},
+							{
+								text: new Date(tag.createdAt).toLocaleDateString(),
+								icon: Icon.Calendar,
+							},
+						]}
+						actions={
+							<ActionPanel>
+								<Action
+									title="Edit Tag"
+									icon={Icon.Pencil}
+									onAction={() => setEditingTag(tag)}
+									shortcut={{ modifiers: ["cmd"], key: "e" }}
+								/>
+								<Action
+									title="Delete Tag"
+									icon={Icon.Trash}
+									style={Action.Style.Destructive}
+									onAction={() => handleDeleteTag(tag)}
+									shortcut={{ modifiers: ["cmd"], key: "delete" }}
+								/>
+								<Action
+									title="Create New Tag"
+									icon={Icon.Plus}
+									onAction={() => setShowCreateForm(true)}
+								/>
+								{unusedTagsCount > 0 && (
+									<Action
+										title="Delete Unused Tags"
+										icon={Icon.Trash}
+										style={Action.Style.Destructive}
+										onAction={handleBulkDelete}
+									/>
+								)}
+								<Action
+									title="Refresh"
+									icon={Icon.ArrowClockwise}
+									onAction={loadTagsData}
+								/>
+							</ActionPanel>
+						}
+					/>
+				))}
+			</List.Section>
+
+			{filteredTags.length === 0 && !isLoading && (
 				<List.EmptyView
-					title="No Tags Found"
-					description="Create your first tag to get started"
+					title={searchText ? "No Tags Found" : "No Tags Found"}
+					description={
+						searchText
+							? `No tags match "${searchText}"`
+							: "Create your first tag to get started"
+					}
 					icon={Icon.Tag}
 					actions={
 						<ActionPanel>

@@ -8,6 +8,12 @@
   "license": "MIT",
   "commands": [
     {
+      "name": "quick-session-actions",
+      "title": "Quick Session Actions",
+      "description": "Start focus sessions quickly with pre-configured templates",
+      "mode": "view"
+    },
+    {
       "name": "start-session-with-tag",
       "title": "Start Focus Session with Tag",
       "description": "Start a Focus session with tracking",

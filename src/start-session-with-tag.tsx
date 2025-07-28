@@ -4,6 +4,7 @@ import {
 	Color,
 	Form,
 	Icon,
+	LocalStorage,
 	open,
 	showToast,
 	Toast,
@@ -11,6 +12,55 @@ import {
 import { useEffect, useState } from "react";
 import { addSession, getAllTags } from "./sessionStorage";
 import type { Session, SessionArguments } from "./types";
+
+// Quick start templates for common use cases
+const QUICK_TEMPLATES = [
+	{
+		id: "coding",
+		title: "Coding Session",
+		goal: "Write clean, efficient code",
+		duration: "3600",
+		categories: ["social", "messaging", "streaming", "gaming"],
+		tag: "coding",
+		icon: Icon.Code,
+	},
+	{
+		id: "writing",
+		title: "Writing Session",
+		goal: "Focus on writing without distractions",
+		duration: "2700",
+		categories: ["social", "messaging", "streaming"],
+		tag: "writing",
+		icon: Icon.Document,
+	},
+	{
+		id: "reading",
+		title: "Reading Session",
+		goal: "Deep reading and comprehension",
+		duration: "1800",
+		categories: ["social", "messaging", "streaming", "gaming"],
+		tag: "reading",
+		icon: Icon.Book,
+	},
+	{
+		id: "meeting",
+		title: "Meeting Prep",
+		goal: "Prepare for upcoming meeting",
+		duration: "900",
+		categories: ["social", "messaging", "streaming"],
+		tag: "meeting",
+		icon: Icon.Person,
+	},
+	{
+		id: "planning",
+		title: "Planning Session",
+		goal: "Plan and organize tasks",
+		duration: "1800",
+		categories: ["social", "messaging", "streaming"],
+		tag: "planning",
+		icon: Icon.Calendar,
+	},
+];
 
 /**
  * Format duration from seconds to human readable format
@@ -65,6 +115,30 @@ const createSession = (args: SessionArguments): Session => {
 	};
 };
 
+/**
+ * Load user preferences from storage
+ */
+const loadUserPreferences = async () => {
+	try {
+		const preferences = await LocalStorage.getItem<string>("user-preferences");
+		return preferences ? JSON.parse(preferences) : {};
+	} catch (error) {
+		console.error("Error loading preferences:", error);
+		return {};
+	}
+};
+
+/**
+ * Save user preferences to storage
+ */
+const saveUserPreferences = async (preferences: any) => {
+	try {
+		await LocalStorage.setItem("user-preferences", JSON.stringify(preferences));
+	} catch (error) {
+		console.error("Error saving preferences:", error);
+	}
+};
+
 export default function Command() {
 	const [goal, setGoal] = useState("");
 	const [duration, setDuration] = useState("1800"); // 30 minutes default
@@ -78,20 +152,34 @@ export default function Command() {
 	const [availableTags, setAvailableTags] = useState<string[]>([]);
 	const [isLoadingTags, setIsLoadingTags] = useState(true);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [showTemplates, setShowTemplates] = useState(false);
+	const [recentTags, setRecentTags] = useState<string[]>([]);
 
-	// Load existing tags on component mount
+	// Load existing tags and user preferences on component mount
 	useEffect(() => {
-		const loadTags = async () => {
+		const loadData = async () => {
 			try {
-				const tags = await getAllTags();
+				const [tags, preferences] = await Promise.all([
+					getAllTags(),
+					loadUserPreferences(),
+				]);
 				setAvailableTags(tags);
+				setRecentTags(preferences.recentTags || []);
+
+				// Apply user preferences
+				if (preferences.defaultDuration) {
+					setDuration(preferences.defaultDuration);
+				}
+				if (preferences.defaultCategories) {
+					setSelectedCategories(preferences.defaultCategories);
+				}
 			} catch (error) {
-				console.error("Error loading tags:", error);
+				console.error("Error loading data:", error);
 			} finally {
 				setIsLoadingTags(false);
 			}
 		};
-		loadTags();
+		loadData();
 	}, []);
 
 	// Standard Focus categories that match Raycast's official Focus app
@@ -116,6 +204,26 @@ export default function Command() {
 				? prev.filter((id) => id !== categoryId)
 				: [...prev, categoryId],
 		);
+	};
+
+	const handleTemplateSelect = (template: (typeof QUICK_TEMPLATES)[0]) => {
+		setGoal(template.goal);
+		setDuration(template.duration);
+		setSelectedCategories(template.categories);
+		setTag(template.tag);
+		setShowTemplates(false);
+	};
+
+	const updateRecentTags = async (newTag: string) => {
+		const updated = [newTag, ...recentTags.filter((t) => t !== newTag)].slice(
+			0,
+			5,
+		);
+		setRecentTags(updated);
+
+		const preferences = await loadUserPreferences();
+		preferences.recentTags = updated;
+		await saveUserPreferences(preferences);
 	};
 
 	const handleSubmit = async (values: {
@@ -159,6 +267,15 @@ export default function Command() {
 			// Store session in local storage
 			await addSession(session);
 
+			// Update recent tags and preferences
+			await updateRecentTags(finalTag);
+
+			// Save user preferences for next time
+			const preferences = await loadUserPreferences();
+			preferences.defaultDuration = values.duration;
+			preferences.defaultCategories = selectedCategories;
+			await saveUserPreferences(preferences);
+
 			// Reload available tags to include the new one
 			const updatedTags = await getAllTags();
 			setAvailableTags(updatedTags);
@@ -195,6 +312,30 @@ export default function Command() {
 		}
 	};
 
+	if (showTemplates) {
+		return (
+			<Form
+				actions={
+					<ActionPanel>
+						<Action
+							title="Back to Form"
+							icon={Icon.ArrowLeft}
+							onAction={() => setShowTemplates(false)}
+						/>
+					</ActionPanel>
+				}
+			>
+				<Form.Description text="Choose a quick start template or go back to customize your session" />
+				{QUICK_TEMPLATES.map((template) => (
+					<Form.Description
+						key={template.id}
+						text={`${template.title}: ${template.goal} (${formatDuration(parseInt(template.duration))})`}
+					/>
+				))}
+			</Form>
+		);
+	}
+
 	return (
 		<Form
 			isLoading={isSubmitting}
@@ -204,6 +345,22 @@ export default function Command() {
 						title="Start Focus Session"
 						icon={Icon.Play}
 						onSubmit={handleSubmit}
+					/>
+					<Action
+						title="Quick Start Templates"
+						icon={Icon.Bolt}
+						onAction={() => setShowTemplates(true)}
+					/>
+					<Action
+						title="Clear Form"
+						icon={Icon.Trash}
+						style={Action.Style.Destructive}
+						onAction={() => {
+							setGoal("");
+							setDuration("1800");
+							setSelectedCategories(["social", "messaging", "streaming"]);
+							setTag("");
+						}}
 					/>
 				</ActionPanel>
 			}
@@ -247,6 +404,45 @@ export default function Command() {
 				/>
 			</Form.Dropdown>
 
+			<Form.Dropdown
+				id="tag"
+				title="Tag"
+				value={tag}
+				onChange={setTag}
+				placeholder="Enter a tag for tracking this session"
+				info="Select an existing tag or type to create a new one"
+			>
+				{recentTags.length > 0 && (
+					<Form.Dropdown.Section title="Recent Tags">
+						{recentTags.map((tagOption) => (
+							<Form.Dropdown.Item
+								key={tagOption}
+								value={tagOption}
+								title={tagOption}
+								icon={Icon.Clock}
+							/>
+						))}
+					</Form.Dropdown.Section>
+				)}
+				<Form.Dropdown.Section title="Available Tags">
+					{availableTags.map((tagOption) => (
+						<Form.Dropdown.Item
+							key={tagOption}
+							value={tagOption}
+							title={tagOption}
+						/>
+					))}
+				</Form.Dropdown.Section>
+				{tag && !availableTags.includes(tag) && !recentTags.includes(tag) && (
+					<Form.Dropdown.Item
+						value={tag}
+						title={`Create "${tag}"`}
+						icon={Icon.Plus}
+					/>
+				)}
+			</Form.Dropdown>
+
+			<Form.Description text="Select categories to block during your focus session:" />
 			{focusCategories.map((category) => (
 				<Form.Checkbox
 					key={category.id}
@@ -265,30 +461,6 @@ export default function Command() {
 					}}
 				/>
 			))}
-
-			<Form.Dropdown
-				id="tag"
-				title="Tag"
-				value={tag}
-				onChange={setTag}
-				placeholder="Enter a tag for tracking this session"
-				info="Select an existing tag or type to create a new one"
-			>
-				{availableTags.map((tagOption) => (
-					<Form.Dropdown.Item
-						key={tagOption}
-						value={tagOption}
-						title={tagOption}
-					/>
-				))}
-				{tag && !availableTags.includes(tag) && (
-					<Form.Dropdown.Item
-						value={tag}
-						title={`Create "${tag}"`}
-						icon={Icon.Plus}
-					/>
-				)}
-			</Form.Dropdown>
 		</Form>
 	);
 }
