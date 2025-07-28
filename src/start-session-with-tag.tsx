@@ -154,6 +154,7 @@ export default function Command() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [showTemplates, setShowTemplates] = useState(false);
 	const [recentTags, setRecentTags] = useState<string[]>([]);
+	const [activeSession, setActiveSession] = useState<Session | null>(null);
 
 	// Load existing tags and user preferences on component mount
 	useEffect(() => {
@@ -290,6 +291,9 @@ export default function Command() {
 			});
 			await open(deeplink);
 
+			// Set active session for better UX
+			setActiveSession(session);
+
 			// Show success toast with enhanced message
 			const durationText = values.duration
 				? formatDuration(parseInt(values.duration, 10))
@@ -309,6 +313,46 @@ export default function Command() {
 			});
 		} finally {
 			setIsSubmitting(false);
+		}
+	};
+
+	const handleStartNewSession = () => {
+		setActiveSession(null);
+		setGoal("");
+		setDuration("1800");
+		setSelectedCategories(["social", "messaging", "streaming"]);
+		setTag("");
+	};
+
+	const handleViewStats = async () => {
+		try {
+			await open("raycast://extensions/pedropini/focus/view-session-stats");
+		} catch (error) {
+			console.error("Error opening stats:", error);
+		}
+	};
+
+	const handleCompleteSession = async () => {
+		if (!activeSession) return;
+
+		try {
+			// Import the function dynamically to avoid circular dependencies
+			const { markSessionCompleted } = await import("./sessionStorage");
+			await markSessionCompleted(activeSession.id);
+
+			setActiveSession(null);
+			await showToast({
+				style: Toast.Style.Success,
+				title: "Session Completed",
+				message: "Focus session has been marked as completed",
+			});
+		} catch (error) {
+			console.error("Error completing session:", error);
+			await showToast({
+				style: Toast.Style.Failure,
+				title: "Failed to Complete Session",
+				message: "Please try again",
+			});
 		}
 	};
 
@@ -332,6 +376,69 @@ export default function Command() {
 						text={`${template.title}: ${template.goal} (${formatDuration(parseInt(template.duration))})`}
 					/>
 				))}
+			</Form>
+		);
+	}
+
+	// Show session active state
+	if (activeSession) {
+		const elapsedTime = Math.floor(
+			(Date.now() - activeSession.startTime) / 1000,
+		);
+		const remainingTime = activeSession.duration
+			? activeSession.duration - elapsedTime
+			: null;
+
+		return (
+			<Form
+				actions={
+					<ActionPanel>
+						<Action
+							title="Complete Session"
+							icon={Icon.Checkmark}
+							onAction={handleCompleteSession}
+							shortcut={{ modifiers: ["cmd"], key: "enter" }}
+						/>
+						<Action
+							title="Start New Session"
+							icon={Icon.Play}
+							onAction={handleStartNewSession}
+							shortcut={{ modifiers: ["cmd"], key: "n" }}
+						/>
+						<Action
+							title="View Statistics"
+							icon={Icon.BarChart}
+							onAction={handleViewStats}
+							shortcut={{ modifiers: ["cmd"], key: "s" }}
+						/>
+					</ActionPanel>
+				}
+			>
+				<Form.Description
+					text={`🎯 **${activeSession.goal || "No goal set"}**`}
+				/>
+				<Form.Description
+					text={`📊 **Session Active** • Tag: ${activeSession.tag}`}
+				/>
+				<Form.Description
+					text={`⏱️ **Elapsed**: ${formatDuration(elapsedTime)}`}
+				/>
+				{remainingTime !== null && (
+					<Form.Description
+						text={`⏳ **Remaining**: ${formatDuration(Math.max(0, remainingTime))}`}
+					/>
+				)}
+				<Form.Description
+					text={`🔒 **Blocking**: ${activeSession.categories.split(",").length} categories`}
+				/>
+				<Form.Description
+					text={`📅 **Started**: ${new Date(activeSession.startTime).toLocaleTimeString()}`}
+				/>
+
+				<Form.Separator />
+
+				<Form.Description text="Your focus session is now active! Focus is blocking the selected categories." />
+				<Form.Description text="You can complete this session early or start a new one when ready." />
 			</Form>
 		);
 	}
@@ -424,22 +531,30 @@ export default function Command() {
 						))}
 					</Form.Dropdown.Section>
 				)}
-				<Form.Dropdown.Section title="Available Tags">
-					{availableTags.map((tagOption) => (
-						<Form.Dropdown.Item
-							key={tagOption}
-							value={tagOption}
-							title={tagOption}
-						/>
-					))}
-				</Form.Dropdown.Section>
-				{tag && !availableTags.includes(tag) && !recentTags.includes(tag) && (
-					<Form.Dropdown.Item
-						value={tag}
-						title={`Create "${tag}"`}
-						icon={Icon.Plus}
-					/>
+				{availableTags.length > 0 && (
+					<Form.Dropdown.Section title="Available Tags">
+						{availableTags
+							.filter((tagOption) => !recentTags.includes(tagOption))
+							.map((tagOption) => (
+								<Form.Dropdown.Item
+									key={tagOption}
+									value={tagOption}
+									title={tagOption}
+								/>
+							))}
+					</Form.Dropdown.Section>
 				)}
+				{tag?.trim() &&
+					!availableTags.includes(tag) &&
+					!recentTags.includes(tag) && (
+						<Form.Dropdown.Section title="Create New Tag">
+							<Form.Dropdown.Item
+								value={tag}
+								title={`Create "${tag}"`}
+								icon={Icon.Plus}
+							/>
+						</Form.Dropdown.Section>
+					)}
 			</Form.Dropdown>
 
 			<Form.Description text="Select categories to block during your focus session:" />
