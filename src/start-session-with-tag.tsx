@@ -577,10 +577,6 @@ export default function Command() {
 					/>
 				</Form.Dropdown>
 
-				<Form.Description
-					text={`Current mode: ${mode === "block" ? "Block" : "Allow"} categories`}
-				/>
-
 				<Form.Dropdown
 					id="tag"
 					title="Tag"
@@ -628,15 +624,6 @@ export default function Command() {
 				</Form.Dropdown>
 
 				<Form.Separator />
-
-				<Form.Description text="Select categories to block during your focus session:" />
-
-				{/* Show selected categories as a summary */}
-				{selectedCategories.length > 0 && (
-					<Form.Description
-						text={`Selected: ${selectedCategories.map((id) => focusCategories.find((c) => c.id === id)?.title || id).join(", ")}`}
-					/>
-				)}
 
 				{/* Category selection checkboxes */}
 				{focusCategories.map((category) => (

@@ -56,28 +56,87 @@ const getStatusIcon = (status: Session["status"]) => {
 };
 
 /**
- * Get productivity score based on session data
+ * Get focus streak based on session data
  */
-const getProductivityScore = (sessions: Session[]): number => {
+const getFocusStreak = (sessions: Session[]): number => {
 	if (sessions.length === 0) return 0;
 
-	const completedSessions = sessions.filter((s) => s.status === "completed");
-	const completionRate = completedSessions.length / sessions.length;
+	const today = new Date();
+	const todayStart = new Date(
+		today.getFullYear(),
+		today.getMonth(),
+		today.getDate(),
+	).getTime();
 
-	const avgDuration =
-		sessions.reduce((sum, s) => sum + (s.duration || 0), 0) / sessions.length;
-	const durationScore = Math.min(avgDuration / 3600, 1); // Normalize to 1 hour
+	let streak = 0;
+	let currentDate = todayStart;
 
-	return Math.round((completionRate * 0.7 + durationScore * 0.3) * 100);
+	while (true) {
+		const sessionsOnDate = sessions.filter((s) => {
+			const sessionDate = new Date(s.startTime);
+			const sessionDateStart = new Date(
+				sessionDate.getFullYear(),
+				sessionDate.getMonth(),
+				sessionDate.getDate(),
+			).getTime();
+			return sessionDateStart === currentDate;
+		});
+
+		if (sessionsOnDate.length === 0) break;
+
+		streak++;
+		currentDate -= 24 * 60 * 60 * 1000; // Go back one day
+	}
+
+	return streak;
 };
 
 /**
- * Get productivity color based on score
+ * Get most productive time of day
  */
-const getProductivityColor = (score: number): Color => {
-	if (score >= 80) return Color.Green;
-	if (score >= 60) return Color.Orange;
-	return Color.Red;
+const getMostProductiveTime = (sessions: Session[]): string => {
+	if (sessions.length === 0) return "No data";
+
+	const hourCounts: { [key: number]: number } = {};
+
+	sessions.forEach((session) => {
+		const hour = new Date(session.startTime).getHours();
+		hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+	});
+
+	const mostProductiveHour = Object.entries(hourCounts).reduce((a, b) =>
+		hourCounts[parseInt(a[0])] > hourCounts[parseInt(b[0])] ? a : b,
+	)[0];
+
+	const hour = parseInt(mostProductiveHour);
+	return `${hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}${hour >= 12 ? "PM" : "AM"}`;
+};
+
+/**
+ * Get average session duration
+ */
+const getAverageSessionDuration = (sessions: Session[]): string => {
+	if (sessions.length === 0) return "No sessions";
+
+	const completedSessions = sessions.filter(
+		(s) => s.duration && s.duration > 0,
+	);
+	if (completedSessions.length === 0) return "No completed sessions";
+
+	const totalDuration = completedSessions.reduce(
+		(sum, s) => sum + (s.duration || 0),
+		0,
+	);
+	const averageDuration = totalDuration / completedSessions.length;
+
+	return formatDuration(averageDuration);
+};
+
+/**
+ * Get recent sessions (last 5)
+ */
+const getRecentSessions = (sessions: Session[]): Session[] => {
+	return sessions.sort((a, b) => b.startTime - a.startTime).slice(0, 5);
 };
 
 export default function Command() {
@@ -276,6 +335,13 @@ export default function Command() {
 		0,
 	);
 
+	// Get all sessions for insights
+	const allSessions = stats.flatMap((tagStats) => tagStats.sessions);
+	const focusStreak = getFocusStreak(allSessions);
+	const mostProductiveTime = getMostProductiveTime(allSessions);
+	const averageSessionDuration = getAverageSessionDuration(allSessions);
+	const recentSessions = getRecentSessions(allSessions);
+
 	return (
 		<List
 			isLoading={isLoading}
@@ -305,7 +371,44 @@ export default function Command() {
 				</ActionPanel>
 			}
 		>
-			{/* Summary Section */}
+			{/* Quick Insights Section */}
+			<List.Section title="Quick Insights">
+				<List.Item
+					title={`${focusStreak} Day Focus Streak`}
+					subtitle="Consecutive days with focus sessions"
+					icon={Icon.Star}
+					accessories={[
+						{
+							text: focusStreak > 0 ? "🔥" : "No streak",
+							icon: focusStreak > 0 ? Icon.Star : Icon.Clock,
+						},
+					]}
+				/>
+				<List.Item
+					title={`Most Productive: ${mostProductiveTime}`}
+					subtitle="Time of day you start most sessions"
+					icon={Icon.Clock}
+					accessories={[
+						{
+							text: "Peak time",
+							icon: Icon.BarChart,
+						},
+					]}
+				/>
+				<List.Item
+					title={`Average Session: ${averageSessionDuration}`}
+					subtitle="Typical duration of your focus sessions"
+					icon={Icon.Clock}
+					accessories={[
+						{
+							text: "Typical",
+							icon: Icon.Clock,
+						},
+					]}
+				/>
+			</List.Section>
+
+			{/* Overview Section */}
 			<List.Section title="Overview">
 				<List.Item
 					title={`${totalSessions} Total Sessions`}
@@ -320,9 +423,59 @@ export default function Command() {
 				/>
 			</List.Section>
 
+			{/* Recent Activity */}
+			{recentSessions.length > 0 && (
+				<List.Section title="Recent Activity">
+					{recentSessions.map((session) => (
+						<List.Item
+							key={session.id}
+							title={session.goal || "No goal set"}
+							subtitle={`${session.tag} • ${formatDate(session.startTime)} • ${session.mode}`}
+							icon={getStatusIcon(session.status).icon}
+							accessories={[
+								{
+									text: session.duration
+										? formatDuration(session.duration)
+										: "No duration",
+									icon: Icon.Clock,
+								},
+								{
+									text: session.status,
+									icon:
+										session.status === "running" ? Icon.Play : Icon.Checkmark,
+								},
+							]}
+							actions={
+								<ActionPanel>
+									{session.status === "running" && (
+										<Action
+											title="Mark as Completed"
+											icon={Icon.Checkmark}
+											onAction={() => handleMarkCompleted(session.id)}
+											shortcut={{ modifiers: ["cmd"], key: "return" }}
+										/>
+									)}
+									<Action
+										title="Remove Session"
+										icon={Icon.Trash}
+										style={Action.Style.Destructive}
+										onAction={() => handleRemoveSession(session.id)}
+										shortcut={{ modifiers: ["cmd"], key: "delete" }}
+									/>
+									<Action
+										title="Refresh"
+										icon={Icon.ArrowClockwise}
+										onAction={loadStats}
+									/>
+								</ActionPanel>
+							}
+						/>
+					))}
+				</List.Section>
+			)}
+
 			{/* Tag Statistics */}
 			{stats.map((tagStats) => {
-				const productivityScore = getProductivityScore(tagStats.sessions);
 				const runningCount = tagStats.sessions.filter(
 					(s) => s.status === "running",
 				).length;
@@ -334,10 +487,6 @@ export default function Command() {
 							subtitle={`Total: ${formatDuration(tagStats.totalDuration)} • ${runningCount} running`}
 							icon={Icon.Tag}
 							accessories={[
-								{
-									text: `${productivityScore}%`,
-									icon: Icon.BarChart,
-								},
 								{
 									text:
 										runningCount > 0
