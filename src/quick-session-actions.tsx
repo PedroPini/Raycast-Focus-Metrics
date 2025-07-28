@@ -2,8 +2,10 @@ import {
 	Action,
 	ActionPanel,
 	Color,
+	Form,
 	Icon,
 	List,
+	LocalStorage,
 	open,
 	showToast,
 	Toast,
@@ -76,6 +78,76 @@ const QUICK_ACTIONS = [
 	},
 ];
 
+// Available icons for custom actions
+const AVAILABLE_ICONS = [
+	{ id: "code", icon: Icon.Code, title: "Code" },
+	{ id: "document", icon: Icon.Document, title: "Document" },
+	{ id: "book", icon: Icon.Book, title: "Book" },
+	{ id: "person", icon: Icon.Person, title: "Person" },
+	{ id: "calendar", icon: Icon.Calendar, title: "Calendar" },
+	{ id: "bullseye", icon: Icon.BullsEye, title: "Target" },
+	{ id: "play", icon: Icon.Play, title: "Play" },
+	{ id: "heart", icon: Icon.Heart, title: "Heart" },
+	{ id: "star", icon: Icon.Star, title: "Star" },
+	{ id: "lightbulb", icon: Icon.LightBulb, title: "Lightbulb" },
+	{ id: "gear", icon: Icon.Gear, title: "Gear" },
+	{ id: "tag", icon: Icon.Tag, title: "Tag" },
+];
+
+// Available colors for custom actions
+const AVAILABLE_COLORS = [
+	{ id: "blue", color: Color.Blue, title: "Blue" },
+	{ id: "green", color: Color.Green, title: "Green" },
+	{ id: "orange", color: Color.Orange, title: "Orange" },
+	{ id: "purple", color: Color.Purple, title: "Purple" },
+	{ id: "yellow", color: Color.Yellow, title: "Yellow" },
+	{ id: "red", color: Color.Red, title: "Red" },
+	{ id: "magenta", color: Color.Magenta, title: "Magenta" },
+	{ id: "brown", color: Color.Brown, title: "Brown" },
+];
+
+// Focus categories for selection
+const FOCUS_CATEGORIES = [
+	{ id: "social", title: "Social" },
+	{ id: "messaging", title: "Messaging" },
+	{ id: "streaming", title: "Streaming" },
+	{ id: "gaming", title: "Gaming" },
+	{ id: "news", title: "News" },
+	{ id: "shopping", title: "Shopping" },
+	{ id: "entertainment", title: "Entertainment" },
+	{ id: "work", title: "Work" },
+	{ id: "productivity", title: "Productivity" },
+	{ id: "education", title: "Education" },
+	{ id: "health", title: "Health" },
+	{ id: "finance", title: "Finance" },
+];
+
+/**
+ * Load custom actions from storage
+ */
+const loadCustomActions = async () => {
+	try {
+		const customActions = await LocalStorage.getItem<string>(
+			"custom-quick-actions",
+		);
+		return customActions ? JSON.parse(customActions) : [];
+	} catch (error) {
+		console.error("Error loading custom actions:", error);
+		return [];
+	}
+};
+
+/**
+ * Save custom actions to storage
+ */
+const saveCustomActions = async (actions: any[]) => {
+	try {
+		await LocalStorage.setItem("custom-quick-actions", JSON.stringify(actions));
+	} catch (error) {
+		console.error("Error saving custom actions:", error);
+	}
+};
+
 /**
  * Format duration from seconds to human readable format
  */
@@ -133,6 +205,8 @@ export default function Command() {
 	const [availableTags, setAvailableTags] = useState<string[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [recentTags, setRecentTags] = useState<string[]>([]);
+	const [customActions, setCustomActions] = useState<any[]>([]);
+	const [showCreateForm, setShowCreateForm] = useState(false);
 
 	useEffect(() => {
 		loadData();
@@ -141,8 +215,12 @@ export default function Command() {
 	const loadData = async () => {
 		try {
 			setIsLoading(true);
-			const tags = await getAllTags();
+			const [tags, customActionsData] = await Promise.all([
+				getAllTags(),
+				loadCustomActions(),
+			]);
 			setAvailableTags(tags);
+			setCustomActions(customActionsData);
 
 			// Get recent tags (last 5 used)
 			const recent = tags.slice(0, 5);
@@ -213,12 +291,187 @@ export default function Command() {
 		}
 	};
 
+	const handleCreateCustomAction = async (values: {
+		title: string;
+		goal: string;
+		duration: string;
+		tag: string;
+		icon: string;
+		color: string;
+		categories: string[];
+	}) => {
+		try {
+			const newAction = {
+				id: `custom-${Date.now()}`,
+				title: values.title,
+				goal: values.goal,
+				duration: values.duration,
+				categories: values.categories.join(","),
+				tag: values.tag,
+				icon:
+					AVAILABLE_ICONS.find((i) => i.id === values.icon)?.icon || Icon.Tag,
+				color:
+					AVAILABLE_COLORS.find((c) => c.id === values.color)?.color ||
+					Color.Blue,
+				isCustom: true,
+			};
+
+			const updatedActions = [...customActions, newAction];
+			await saveCustomActions(updatedActions);
+			setCustomActions(updatedActions);
+			setShowCreateForm(false);
+
+			await showToast({
+				style: Toast.Style.Success,
+				title: "Custom Action Created",
+				message: `${values.title} has been added to your quick actions`,
+			});
+		} catch (error) {
+			console.error("Error creating custom action:", error);
+			await showToast({
+				style: Toast.Style.Failure,
+				title: "Failed to Create Action",
+				message: "Please try again",
+			});
+		}
+	};
+
+	const handleDeleteCustomAction = async (actionId: string) => {
+		try {
+			const updatedActions = customActions.filter(
+				(action) => action.id !== actionId,
+			);
+			await saveCustomActions(updatedActions);
+			setCustomActions(updatedActions);
+
+			await showToast({
+				style: Toast.Style.Success,
+				title: "Action Deleted",
+				message: "Custom action has been removed",
+			});
+		} catch (error) {
+			console.error("Error deleting custom action:", error);
+			await showToast({
+				style: Toast.Style.Failure,
+				title: "Failed to Delete Action",
+				message: "Please try again",
+			});
+		}
+	};
+
+	// Show create form
+	if (showCreateForm) {
+		return (
+			<Form
+				actions={
+					<ActionPanel>
+						<Action.SubmitForm
+							title="Create Custom Action"
+							icon={Icon.Plus}
+							onSubmit={handleCreateCustomAction}
+						/>
+						<Action
+							title="Cancel"
+							icon={Icon.XMarkCircle}
+							onAction={() => setShowCreateForm(false)}
+						/>
+					</ActionPanel>
+				}
+			>
+				<Form.TextField
+					id="title"
+					title="Action Title"
+					placeholder="e.g., Quick Study, Deep Work, Meeting Prep"
+					info="Give your custom action a descriptive name"
+				/>
+
+				<Form.TextField
+					id="goal"
+					title="Goal"
+					placeholder="What do you want to focus on?"
+					info="Set a clear goal for this focus session"
+				/>
+
+				<Form.Dropdown
+					id="duration"
+					title="Duration"
+					info="Choose how long this session should last"
+				>
+					<Form.Dropdown.Item value="900" title="15 minutes" />
+					<Form.Dropdown.Item value="1800" title="30 minutes" />
+					<Form.Dropdown.Item value="2700" title="45 minutes" />
+					<Form.Dropdown.Item value="3600" title="1 hour" />
+					<Form.Dropdown.Item value="5400" title="1.5 hours" />
+					<Form.Dropdown.Item value="7200" title="2 hours" />
+				</Form.Dropdown>
+
+				<Form.TextField
+					id="tag"
+					title="Tag"
+					placeholder="Enter a tag for tracking"
+					info="This tag will be used to track and group sessions"
+				/>
+
+				<Form.Dropdown
+					id="icon"
+					title="Icon"
+					info="Choose an icon for your custom action"
+				>
+					{AVAILABLE_ICONS.map((iconOption) => (
+						<Form.Dropdown.Item
+							key={iconOption.id}
+							value={iconOption.id}
+							title={iconOption.title}
+							icon={{ source: iconOption.icon, tintColor: Color.Blue }}
+						/>
+					))}
+				</Form.Dropdown>
+
+				<Form.Dropdown
+					id="color"
+					title="Color"
+					info="Choose a color for your custom action"
+				>
+					{AVAILABLE_COLORS.map((colorOption) => (
+						<Form.Dropdown.Item
+							key={colorOption.id}
+							value={colorOption.id}
+							title={colorOption.title}
+							icon={{ source: Icon.Circle, tintColor: colorOption.color }}
+						/>
+					))}
+				</Form.Dropdown>
+
+				<Form.Separator />
+
+				<Form.Description text="Select categories to block during this session:" />
+				{FOCUS_CATEGORIES.map((category) => (
+					<Form.Checkbox
+						key={category.id}
+						id={`category-${category.id}`}
+						title={category.title}
+						label={category.title}
+						defaultValue={["social", "messaging", "streaming"].includes(
+							category.id,
+						)}
+					/>
+				))}
+			</Form>
+		);
+	}
+
 	return (
 		<List
 			isLoading={isLoading}
 			searchBarPlaceholder="Search quick actions..."
 			actions={
 				<ActionPanel>
+					<Action
+						title="Create Custom Action"
+						icon={Icon.Plus}
+						onAction={() => setShowCreateForm(true)}
+						shortcut={{ modifiers: ["cmd"], key: "n" }}
+					/>
 					<Action
 						title="Refresh"
 						icon={Icon.ArrowClockwise}
@@ -235,7 +488,7 @@ export default function Command() {
 			}
 		>
 			{/* Quick Actions Section */}
-			<List.Section title="Quick Actions">
+			<List.Section title="Built-in Actions">
 				{QUICK_ACTIONS.map((action) => (
 					<List.Item
 						key={action.id}
@@ -254,7 +507,12 @@ export default function Command() {
 									title={`Start ${action.title}`}
 									icon={Icon.Play}
 									onAction={() => handleQuickAction(action)}
-									shortcut={{ modifiers: ["cmd"], key: "enter" }}
+									shortcut={{ modifiers: ["cmd"], key: "return" }}
+								/>
+								<Action
+									title="Create Custom Action"
+									icon={Icon.Plus}
+									onAction={() => setShowCreateForm(true)}
 								/>
 								<Action
 									title="View Statistics"
@@ -272,6 +530,57 @@ export default function Command() {
 				))}
 			</List.Section>
 
+			{/* Custom Actions Section */}
+			{customActions.length > 0 && (
+				<List.Section title="Custom Actions">
+					{customActions.map((action) => (
+						<List.Item
+							key={action.id}
+							title={action.title}
+							subtitle={`${action.goal} • ${formatDuration(parseInt(action.duration, 10))}`}
+							icon={{ source: action.icon, tintColor: action.color }}
+							accessories={[
+								{
+									text: action.categories.split(",").length.toString(),
+									icon: Icon.Tag,
+								},
+							]}
+							actions={
+								<ActionPanel>
+									<Action
+										title={`Start ${action.title}`}
+										icon={Icon.Play}
+										onAction={() => handleQuickAction(action)}
+										shortcut={{ modifiers: ["cmd"], key: "return" }}
+									/>
+									<Action
+										title="Delete Custom Action"
+										icon={Icon.Trash}
+										style={Action.Style.Destructive}
+										onAction={() => handleDeleteCustomAction(action.id)}
+									/>
+									<Action
+										title="Create Custom Action"
+										icon={Icon.Plus}
+										onAction={() => setShowCreateForm(true)}
+									/>
+									<Action
+										title="View Statistics"
+										icon={Icon.BarChart}
+										onAction={handleViewStats}
+									/>
+									<Action
+										title="Refresh"
+										icon={Icon.ArrowClockwise}
+										onAction={loadData}
+									/>
+								</ActionPanel>
+							}
+						/>
+					))}
+				</List.Section>
+			)}
+
 			{/* Recent Tags Section */}
 			{recentTags.length > 0 && (
 				<List.Section title="Recent Tags">
@@ -287,7 +596,12 @@ export default function Command() {
 										title={`Start ${tag} Session`}
 										icon={Icon.Play}
 										onAction={() => handleCustomSession(tag)}
-										shortcut={{ modifiers: ["cmd"], key: "enter" }}
+										shortcut={{ modifiers: ["cmd"], key: "return" }}
+									/>
+									<Action
+										title="Create Custom Action"
+										icon={Icon.Plus}
+										onAction={() => setShowCreateForm(true)}
 									/>
 									<Action
 										title="View Statistics"
@@ -323,6 +637,11 @@ export default function Command() {
 										onAction={() => handleCustomSession(tag)}
 									/>
 									<Action
+										title="Create Custom Action"
+										icon={Icon.Plus}
+										onAction={() => setShowCreateForm(true)}
+									/>
+									<Action
 										title="View Statistics"
 										icon={Icon.BarChart}
 										onAction={handleViewStats}
@@ -351,6 +670,11 @@ export default function Command() {
 										}
 									/>
 									<Action
+										title="Create Custom Action"
+										icon={Icon.Plus}
+										onAction={() => setShowCreateForm(true)}
+									/>
+									<Action
 										title="View Statistics"
 										icon={Icon.BarChart}
 										onAction={handleViewStats}
@@ -369,6 +693,11 @@ export default function Command() {
 					icon={Icon.Tag}
 					actions={
 						<ActionPanel>
+							<Action
+								title="Create Custom Action"
+								icon={Icon.Plus}
+								onAction={() => setShowCreateForm(true)}
+							/>
 							<Action
 								title="Manage Tags"
 								icon={Icon.Tag}

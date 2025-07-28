@@ -4,6 +4,7 @@ import {
 	Color,
 	Form,
 	Icon,
+	List,
 	LocalStorage,
 	open,
 	showToast,
@@ -155,6 +156,7 @@ export default function Command() {
 	const [showTemplates, setShowTemplates] = useState(false);
 	const [recentTags, setRecentTags] = useState<string[]>([]);
 	const [activeSession, setActiveSession] = useState<Session | null>(null);
+	const [showForm, setShowForm] = useState(false);
 
 	// Load existing tags and user preferences on component mount
 	useEffect(() => {
@@ -356,9 +358,37 @@ export default function Command() {
 		}
 	};
 
+	const handleQuickPreset = (preset: string) => {
+		switch (preset) {
+			case "social-messaging":
+				setSelectedCategories(["social", "messaging"]);
+				break;
+			case "streaming":
+				setSelectedCategories(["streaming"]);
+				break;
+			case "gaming":
+				setSelectedCategories(["gaming"]);
+				break;
+			case "all-distractions":
+				setSelectedCategories([
+					"social",
+					"messaging",
+					"streaming",
+					"gaming",
+					"news",
+					"shopping",
+					"entertainment",
+				]);
+				break;
+			default:
+				break;
+		}
+	};
+
+	// Show templates view
 	if (showTemplates) {
 		return (
-			<Form
+			<List
 				actions={
 					<ActionPanel>
 						<Action
@@ -369,14 +399,31 @@ export default function Command() {
 					</ActionPanel>
 				}
 			>
-				<Form.Description text="Choose a quick start template or go back to customize your session" />
-				{QUICK_TEMPLATES.map((template) => (
-					<Form.Description
-						key={template.id}
-						text={`${template.title}: ${template.goal} (${formatDuration(parseInt(template.duration))})`}
-					/>
-				))}
-			</Form>
+				<List.Section title="Quick Start Templates">
+					{QUICK_TEMPLATES.map((template) => (
+						<List.Item
+							key={template.id}
+							title={template.title}
+							subtitle={`${template.goal} (${formatDuration(parseInt(template.duration))})`}
+							icon={{ source: template.icon, tintColor: Color.Blue }}
+							actions={
+								<ActionPanel>
+									<Action
+										title="Use Template"
+										icon={Icon.Checkmark}
+										onAction={() => handleTemplateSelect(template)}
+									/>
+									<Action
+										title="Back to Form"
+										icon={Icon.ArrowLeft}
+										onAction={() => setShowTemplates(false)}
+									/>
+								</ActionPanel>
+							}
+						/>
+					))}
+				</List.Section>
+			</List>
 		);
 	}
 
@@ -390,14 +437,14 @@ export default function Command() {
 			: null;
 
 		return (
-			<Form
+			<List
 				actions={
 					<ActionPanel>
 						<Action
 							title="Complete Session"
 							icon={Icon.Checkmark}
 							onAction={handleCompleteSession}
-							shortcut={{ modifiers: ["cmd"], key: "enter" }}
+							shortcut={{ modifiers: ["cmd"], key: "return" }}
 						/>
 						<Action
 							title="Start New Session"
@@ -414,168 +461,271 @@ export default function Command() {
 					</ActionPanel>
 				}
 			>
-				<Form.Description
-					text={`🎯 **${activeSession.goal || "No goal set"}**`}
-				/>
-				<Form.Description
-					text={`📊 **Session Active** • Tag: ${activeSession.tag}`}
-				/>
-				<Form.Description
-					text={`⏱️ **Elapsed**: ${formatDuration(elapsedTime)}`}
-				/>
-				{remainingTime !== null && (
-					<Form.Description
-						text={`⏳ **Remaining**: ${formatDuration(Math.max(0, remainingTime))}`}
+				<List.Section title="Active Session">
+					<List.Item
+						title={activeSession.goal || "No goal set"}
+						subtitle={`Tag: ${activeSession.tag}`}
+						icon={{ source: Icon.Play, tintColor: Color.Green }}
+						accessories={[
+							{ text: `Elapsed: ${formatDuration(elapsedTime)}` },
+							{
+								text: `Blocking: ${activeSession.categories.split(",").length} categories`,
+							},
+						]}
 					/>
-				)}
-				<Form.Description
-					text={`🔒 **Blocking**: ${activeSession.categories.split(",").length} categories`}
-				/>
-				<Form.Description
-					text={`📅 **Started**: ${new Date(activeSession.startTime).toLocaleTimeString()}`}
-				/>
-
-				<Form.Separator />
-
-				<Form.Description text="Your focus session is now active! Focus is blocking the selected categories." />
-				<Form.Description text="You can complete this session early or start a new one when ready." />
-			</Form>
+					{remainingTime !== null && (
+						<List.Item
+							title="Remaining Time"
+							subtitle={formatDuration(Math.max(0, remainingTime))}
+							icon={{ source: Icon.Clock, tintColor: Color.Orange }}
+						/>
+					)}
+				</List.Section>
+			</List>
 		);
 	}
 
-	return (
-		<Form
-			isLoading={isSubmitting}
-			actions={
-				<ActionPanel>
-					<Action.SubmitForm
-						title="Start Focus Session"
-						icon={Icon.Play}
-						onSubmit={handleSubmit}
-					/>
-					<Action
-						title="Quick Start Templates"
-						icon={Icon.Bolt}
-						onAction={() => setShowTemplates(true)}
-					/>
-					<Action
-						title="Clear Form"
-						icon={Icon.Trash}
-						style={Action.Style.Destructive}
-						onAction={() => {
-							setGoal("");
-							setDuration("1800");
-							setSelectedCategories(["social", "messaging", "streaming"]);
-							setTag("");
-						}}
-					/>
-				</ActionPanel>
-			}
-		>
-			<Form.TextField
-				id="goal"
-				title="Goal"
-				placeholder="What do you want to focus on?"
-				value={goal}
-				onChange={setGoal}
-				info="Set a clear goal for your focus session to stay motivated"
-			/>
-
-			<Form.Dropdown
-				id="duration"
-				title="Duration"
-				value={duration}
-				onChange={setDuration}
-				info="Choose how long you want to focus"
+	// Show form view
+	if (showForm) {
+		return (
+			<Form
+				isLoading={isSubmitting}
+				actions={
+					<ActionPanel>
+						<Action.SubmitForm
+							title="Start Focus Session"
+							icon={Icon.Play}
+							onSubmit={handleSubmit}
+						/>
+						<Action
+							title="Back to List"
+							icon={Icon.ArrowLeft}
+							onAction={() => setShowForm(false)}
+						/>
+						<Action
+							title="Social & Messaging"
+							icon={Icon.Person}
+							onAction={() => handleQuickPreset("social-messaging")}
+						/>
+						<Action
+							title="Streaming"
+							icon={Icon.Video}
+							onAction={() => handleQuickPreset("streaming")}
+						/>
+						<Action
+							title="Gaming"
+							icon={Icon.GameController}
+							onAction={() => handleQuickPreset("gaming")}
+						/>
+						<Action
+							title="All Distractions"
+							icon={Icon.Lock}
+							onAction={() => handleQuickPreset("all-distractions")}
+						/>
+						<Action
+							title="Clear Form"
+							icon={Icon.Trash}
+							style={Action.Style.Destructive}
+							onAction={() => {
+								setGoal("");
+								setDuration("1800");
+								setSelectedCategories(["social", "messaging", "streaming"]);
+								setTag("");
+							}}
+						/>
+					</ActionPanel>
+				}
 			>
-				<Form.Dropdown.Item value="900" title="15 minutes" />
-				<Form.Dropdown.Item value="1800" title="30 minutes" />
-				<Form.Dropdown.Item value="2700" title="45 minutes" />
-				<Form.Dropdown.Item value="3600" title="1 hour" />
-				<Form.Dropdown.Item value="5400" title="1.5 hours" />
-				<Form.Dropdown.Item value="7200" title="2 hours" />
-				<Form.Dropdown.Item value="10800" title="3 hours" />
-				<Form.Dropdown.Item value="14400" title="4 hours" />
-			</Form.Dropdown>
-
-			<Form.Dropdown id="mode" title="Mode" value={mode} onChange={setMode}>
-				<Form.Dropdown.Item
-					value="block"
-					title="Block"
-					icon={{ source: Icon.Lock, tintColor: Color.Red }}
+				<Form.TextField
+					id="goal"
+					title="Goal"
+					placeholder="What do you want to focus on?"
+					value={goal}
+					onChange={setGoal}
+					info="Set a clear goal for your focus session to stay motivated"
 				/>
-				<Form.Dropdown.Item
-					value="allow"
-					title="Allow"
-					icon={{ source: Icon.Checkmark, tintColor: Color.Green }}
-				/>
-			</Form.Dropdown>
 
-			<Form.Dropdown
-				id="tag"
-				title="Tag"
-				value={tag}
-				onChange={setTag}
-				placeholder="Enter a tag for tracking this session"
-				info="Select an existing tag or type to create a new one"
-			>
-				{recentTags.length > 0 && (
-					<Form.Dropdown.Section title="Recent Tags">
-						{recentTags.map((tagOption) => (
-							<Form.Dropdown.Item
-								key={tagOption}
-								value={tagOption}
-								title={tagOption}
-								icon={Icon.Clock}
-							/>
-						))}
-					</Form.Dropdown.Section>
-				)}
-				{availableTags.length > 0 && (
-					<Form.Dropdown.Section title="Available Tags">
-						{availableTags
-							.filter((tagOption) => !recentTags.includes(tagOption))
-							.map((tagOption) => (
+				<Form.Dropdown
+					id="duration"
+					title="Duration"
+					value={duration}
+					onChange={setDuration}
+					info="Choose how long you want to focus"
+				>
+					<Form.Dropdown.Item value="900" title="15 minutes" />
+					<Form.Dropdown.Item value="1800" title="30 minutes" />
+					<Form.Dropdown.Item value="2700" title="45 minutes" />
+					<Form.Dropdown.Item value="3600" title="1 hour" />
+					<Form.Dropdown.Item value="5400" title="1.5 hours" />
+					<Form.Dropdown.Item value="7200" title="2 hours" />
+					<Form.Dropdown.Item value="10800" title="3 hours" />
+					<Form.Dropdown.Item value="14400" title="4 hours" />
+				</Form.Dropdown>
+
+				<Form.Separator />
+
+				<Form.Dropdown id="mode" title="Mode" value={mode} onChange={setMode}>
+					<Form.Dropdown.Item
+						value="block"
+						title="Block"
+						icon={{ source: Icon.Lock, tintColor: Color.Red }}
+					/>
+					<Form.Dropdown.Item
+						value="allow"
+						title="Allow"
+						icon={{ source: Icon.Checkmark, tintColor: Color.Green }}
+					/>
+				</Form.Dropdown>
+
+				<Form.Description
+					text={`Current mode: ${mode === "block" ? "Block" : "Allow"} categories`}
+				/>
+
+				<Form.Dropdown
+					id="tag"
+					title="Tag"
+					value={tag}
+					onChange={setTag}
+					placeholder="Enter a tag for tracking this session"
+					info="Select an existing tag or type to create a new one"
+				>
+					{recentTags.length > 0 && (
+						<Form.Dropdown.Section title="Recent Tags">
+							{recentTags.map((tagOption) => (
 								<Form.Dropdown.Item
 									key={tagOption}
 									value={tagOption}
 									title={tagOption}
+									icon={Icon.Clock}
 								/>
 							))}
-					</Form.Dropdown.Section>
-				)}
-				{tag?.trim() &&
-					!availableTags.includes(tag) &&
-					!recentTags.includes(tag) && (
-						<Form.Dropdown.Section title="Create New Tag">
-							<Form.Dropdown.Item
-								value={tag}
-								title={`Create "${tag}"`}
-								icon={Icon.Plus}
-							/>
 						</Form.Dropdown.Section>
 					)}
-			</Form.Dropdown>
+					{availableTags.length > 0 && (
+						<Form.Dropdown.Section title="Available Tags">
+							{availableTags
+								.filter((tagOption) => !recentTags.includes(tagOption))
+								.map((tagOption) => (
+									<Form.Dropdown.Item
+										key={tagOption}
+										value={tagOption}
+										title={tagOption}
+									/>
+								))}
+						</Form.Dropdown.Section>
+					)}
+					{tag?.trim() &&
+						!availableTags.includes(tag) &&
+						!recentTags.includes(tag) && (
+							<Form.Dropdown.Section title="Create New Tag">
+								<Form.Dropdown.Item
+									value={tag}
+									title={`Create "${tag}"`}
+									icon={Icon.Plus}
+								/>
+							</Form.Dropdown.Section>
+						)}
+				</Form.Dropdown>
 
-			<Form.Description text="Select categories to block during your focus session:" />
-			{focusCategories.map((category) => (
-				<Form.Checkbox
-					key={category.id}
-					id={`category-${category.id}`}
-					title={category.title}
-					label={category.title}
-					value={selectedCategories.includes(category.id)}
-					onChange={(checked) => {
-						if (checked) {
-							setSelectedCategories((prev) => [...prev, category.id]);
-						} else {
-							setSelectedCategories((prev) =>
-								prev.filter((id) => id !== category.id),
-							);
-						}
-					}}
+				<Form.Separator />
+
+				<Form.Description text="Select categories to block during your focus session:" />
+
+				{/* Show selected categories as a summary */}
+				{selectedCategories.length > 0 && (
+					<Form.Description
+						text={`Selected: ${selectedCategories.map((id) => focusCategories.find((c) => c.id === id)?.title || id).join(", ")}`}
+					/>
+				)}
+
+				{/* Category selection checkboxes */}
+				{focusCategories.map((category) => (
+					<Form.Checkbox
+						key={category.id}
+						id={`category-${category.id}`}
+						title={category.title}
+						label={category.title}
+						value={selectedCategories.includes(category.id)}
+						onChange={(checked) => {
+							if (checked) {
+								setSelectedCategories((prev) => [...prev, category.id]);
+							} else {
+								setSelectedCategories((prev) =>
+									prev.filter((id) => id !== category.id),
+								);
+							}
+						}}
+					/>
+				))}
+			</Form>
+		);
+	}
+
+	// Main list view
+	return (
+		<List
+			isLoading={isLoadingTags}
+			searchBarPlaceholder="Search templates or start a new session..."
+			actions={
+				<ActionPanel>
+					<Action
+						title="Start New Session"
+						icon={Icon.Play}
+						onAction={() => setShowForm(true)}
+						shortcut={{ modifiers: ["cmd"], key: "n" }}
+					/>
+					<Action
+						title="View Statistics"
+						icon={Icon.BarChart}
+						onAction={handleViewStats}
+						shortcut={{ modifiers: ["cmd"], key: "s" }}
+					/>
+				</ActionPanel>
+			}
+		>
+			<List.Section title="Quick Start">
+				<List.Item
+					title="Start New Session"
+					subtitle="Customize your focus session with goals, duration, and categories"
+					icon={{ source: Icon.Play, tintColor: Color.Blue }}
+					actions={
+						<ActionPanel>
+							<Action
+								title="Start New Session"
+								icon={Icon.Play}
+								onAction={() => setShowForm(true)}
+								shortcut={{ modifiers: ["cmd"], key: "return" }}
+							/>
+						</ActionPanel>
+					}
 				/>
-			))}
-		</Form>
+			</List.Section>
+
+			{recentTags.length > 0 && (
+				<List.Section title="Recent Tags">
+					{recentTags.map((tagOption) => (
+						<List.Item
+							key={tagOption}
+							title={`Start ${tagOption} session`}
+							subtitle="Use your recent tag with default settings"
+							icon={{ source: Icon.Tag, tintColor: Color.Green }}
+							actions={
+								<ActionPanel>
+									<Action
+										title={`Start ${tagOption} Session`}
+										icon={Icon.Play}
+										onAction={() => {
+											setTag(tagOption);
+											setShowForm(true);
+										}}
+										shortcut={{ modifiers: ["cmd"], key: "return" }}
+									/>
+								</ActionPanel>
+							}
+						/>
+					))}
+				</List.Section>
+			)}
+		</List>
 	);
 }

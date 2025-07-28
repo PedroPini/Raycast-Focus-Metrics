@@ -398,7 +398,7 @@ export default function Command() {
 													title="Mark as Completed"
 													icon={Icon.Checkmark}
 													onAction={() => handleMarkCompleted(session.id)}
-													shortcut={{ modifiers: ["cmd"], key: "enter" }}
+													shortcut={{ modifiers: ["cmd"], key: "return" }}
 												/>
 											)}
 											<Action
