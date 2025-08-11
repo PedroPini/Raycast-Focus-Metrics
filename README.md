@@ -1,5 +1,7 @@
-# Focus Session Tracker
+# Focus - Website Blocker
+The Focus extension allows you to manage Focus app directly in Raycast.
 
+<<<<<<< HEAD
 A Raycast extension that wraps Focus deeplinks and adds session tracking with tags for better productivity insights. **Now with reduced friction and enhanced user experience!**
 
 ## ✨ New Features & Improvements
@@ -238,3 +240,8 @@ npm run publish
 ## License
 
 MIT
+=======
+## Requirements
+You need to have the Focus app for Mac installed to use this extension. You can download it from [https://heyfocus.com](https://heyfocus.com).
+
+>>>>>>> contributions/merge-1754878586437
